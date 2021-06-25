@@ -1,0 +1,58 @@
+name:                toy-wasm-symbex
+version:             0.1.0.0
+github:              "bartavelle/toy-wasm-symbex"
+license:             BSD3
+author:              "bartavelle"
+maintainer:          "bartavelle@banquise.net"
+copyright:           "2021 bartavelle"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/synacktiv/toy-wasm-symbex#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- bytestring
+- wasm
+- containers
+- lens
+- mtl
+- sbv
+
+library:
+  source-dirs: src
+  ghc-options:
+    - -Wall
+
+executables:
+  run-challenge:
+    main:                RunChallenge.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -Wall
+    dependencies:
+    - toy-wasm-symbex
+
+tests:
+  toy-wasm-symbex-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - toy-wasm-symbex
+    - hspec
+

@@ -1,0 +1,80 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
+
+name:           toy-wasm-symbex
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/synacktiv/toy-wasm-symbex#readme>
+homepage:       https://github.com/bartavelle/toy-wasm-symbex#readme
+bug-reports:    https://github.com/bartavelle/toy-wasm-symbex/issues
+author:         bartavelle
+maintainer:     bartavelle@banquise.net
+copyright:      2021 bartavelle
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/bartavelle/toy-wasm-symbex
+
+library
+  exposed-modules:
+      Arch.WASM.Instructions
+  other-modules:
+      Paths_toy_wasm_symbex
+  hs-source-dirs:
+      src
+  ghc-options: -Wall
+  build-depends:
+      base >=4.7 && <5
+    , bytestring
+    , containers
+    , lens
+    , mtl
+    , sbv
+    , wasm
+  default-language: Haskell2010
+
+executable run-challenge
+  main-is: RunChallenge.hs
+  other-modules:
+      Paths_toy_wasm_symbex
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -Wall
+  build-depends:
+      base >=4.7 && <5
+    , bytestring
+    , containers
+    , lens
+    , mtl
+    , sbv
+    , toy-wasm-symbex
+    , wasm
+  default-language: Haskell2010
+
+test-suite toy-wasm-symbex-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_toy_wasm_symbex
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , bytestring
+    , containers
+    , hspec
+    , lens
+    , mtl
+    , sbv
+    , toy-wasm-symbex
+    , wasm
+  default-language: Haskell2010
