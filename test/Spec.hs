@@ -1,16 +1,17 @@
 module Main where
 
 import Arch.WASM.Instructions
+import Control.Monad.Identity
 import Data.Word (Word32)
 import GHC.Natural (Natural)
 import Language.Wasm.Structure
 import Test.Hspec
 
 testProgram :: [Instruction Natural] -> [Word32] -> [Word32] -> Expectation
-testProgram instrs istack estack = trivialEvaluate md stt `shouldBe` Right (map VI32 estack)
+testProgram instrs istack estack = trivialEvaluate md stt `shouldBe` Right (map show estack)
   where
     md = emptyModule
-    stt = WState mempty [] (Frame (map VI32 istack) instrs)
+    stt = WState mempty [] (Frame (map (VI32 . Identity) istack) instrs)
 
 insterpreterTests :: SpecWith ()
 insterpreterTests = do

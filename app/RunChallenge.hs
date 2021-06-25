@@ -1,11 +1,7 @@
 module Main where
 
 import Arch.WASM.Instructions
-  ( Frame (Frame),
-    VNum (VI32),
-    WState (WState),
-    trivialEvaluate,
-  )
+import Symb.Expression
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.IntMap.Strict as IntMap
@@ -18,10 +14,10 @@ import Language.Wasm.Structure
   )
 import System.Environment (getArgs)
 
-storeString :: Int -> BS.ByteString -> IntMap.IntMap Word8 -> IntMap.IntMap Word8
+storeString :: Symb f => Int -> BS.ByteString -> IntMap.IntMap (f Word8) -> IntMap.IntMap (f Word8)
 storeString addr bs stt = foldl' setbyte stt (zip [addr ..] (BS.unpack bs))
   where
-    setbyte curmem (a, b) = IntMap.insert a b curmem
+    setbyte curmem (a, b) = IntMap.insert a (inject b) curmem
 
 main :: IO ()
 main = do
@@ -37,4 +33,4 @@ main = do
           (storeString ausername busername $ storeString apassword bpassword mempty)
           []
           (Frame [VI32 (fromIntegral a) | a <- [ausername, apassword]] instrs)
-  print (trivialEvaluate md istate)
+  print $ trivialEvaluate md istate

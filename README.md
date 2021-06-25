@@ -2,4 +2,5 @@
 
 This is a toy WASM symbolic interpreter. It illustrates the following articles:
 
- * [article1](https://www.synacktiv.com/en/publications/writing-a-toy-symbolic-interpreter-and-solving-challenges-part-1)
+ * [Part 1 - Introduction](https://www.synacktiv.com/en/publications/writing-a-toy-symbolic-interpreter-and-solving-challenges-part-1)
+ * [Part 2 - Writing a concrete interpreter](https://www.synacktiv.com/en/publications/writing-a-toy-symbolic-interpreter-and-solving-challenges-part-2)

@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       Arch.WASM.Instructions
+      Symb.Expression
   other-modules:
       Paths_toy_wasm_symbex
   hs-source-dirs:

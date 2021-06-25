@@ -20,45 +20,48 @@ import Control.Monad.State.Strict
   ( MonadState,
     evalState,
   )
-import Data.Bits
 import qualified Data.IntMap.Strict as IntMap
 import Data.Maybe (fromMaybe)
 import Data.Word
 import GHC.Natural (Natural)
 import Language.Wasm.Structure
+import Symb.Expression
 
 data WASM
 
-data WState = WState
-  { _wmemory :: IntMap.IntMap Word8,
-    _wstack :: [StackElement],
-    _wframe :: Frame
+data WState (f :: * -> *) = WState
+  { _wmemory :: IntMap.IntMap (f Word8),
+    _wstack :: [StackElement f],
+    _wframe :: Frame f
   }
-  deriving (Show)
 
-data Frame = Frame
-  { _fvals :: [VNum],
+data Frame (f :: * -> *) = Frame
+  { _fvals :: [VNum f],
     _finstrs :: [Instruction Natural]
   }
-  deriving (Show)
 
-data StackElement
-  = Value VNum
+data StackElement (f :: * -> *)
+  = Value (VNum f)
   | Cont [Instruction Natural]
-  | Activation ResultType Frame
-  deriving (Show)
+  | Activation ResultType (Frame f)
 
-data VNum
-  = VI32 Word32
-  | VI64 Word64
-  | VF32 Float
-  | VF64 Double
-  deriving (Show, Eq)
+data VNum (f :: * -> *)
+  = VI32 (f Word32)
+  | VI64 (f Word64)
+  | VF32 (f Float)
+  | VF64 (f Double)
 
 makeLenses ''WState
 makeLenses ''Frame
 
-getValueType :: VNum -> ValueType
+showVNumI :: VNum Identity -> String
+showVNumI v = case v of
+  VI32 x -> show (runIdentity x)
+  VI64 x -> show (runIdentity x)
+  VF32 x -> show (runIdentity x)
+  VF64 x -> show (runIdentity x)
+
+getValueType :: VNum f -> ValueType
 getValueType v =
   case v of
     VI32 _ -> I32
@@ -66,34 +69,34 @@ getValueType v =
     VF32 _ -> F32
     VF64 _ -> F64
 
-push :: MonadState WState m => StackElement -> m ()
+push :: MonadState (WState f) m => StackElement f -> m ()
 push x = wstack %= (x :)
 
-pushV :: MonadState WState m => VNum -> m ()
+pushV :: MonadState (WState f) m => VNum f -> m ()
 pushV = push . Value
 
-popM :: MonadState WState m => m (Maybe StackElement)
+popM :: MonadState (WState f) m => m (Maybe (StackElement f))
 popM =
   use wstack >>= \case
     [] -> pure Nothing
     x : xs -> Just x <$ (wstack .= xs)
 
-pop :: (MonadState WState m, MonadError String m) => m StackElement
+pop :: (MonadState (WState f) m, MonadError String m) => m (StackElement f)
 pop = popM >>= maybe (throwError "Pop failed, empty stack") pure
 
-popV :: (MonadState WState m, MonadError String m) => m VNum
+popV :: (MonadState (WState f) m, MonadError String m) => m (VNum f)
 popV =
   pop >>= \case
     Value x -> pure x
     _ -> throwError "Did not pop a value"
 
-pop32 :: (MonadState WState m, MonadError String m) => m Word32
+pop32 :: (MonadState (WState f) m, MonadError String m) => m (f Word32)
 pop32 =
   popV >>= \case
     VI32 x -> pure x
     v -> throwError ("Expected I32, got " ++ show (getValueType v))
 
-cast :: MonadError String m => ValueType -> VNum -> m VNum
+cast :: MonadError String m => ValueType -> VNum f -> m (VNum f)
 cast vt v
   | rt == vt = pure v
   | otherwise = throwError ("mismatched types, expected " ++ show vt ++ " got " ++ show rt)
@@ -112,31 +115,31 @@ getFuncType fid md =
     Nothing -> throwError "Unknown type"
     Just f -> pure f
 
-makeDefault :: ValueType -> VNum
+makeDefault :: Symb f => ValueType -> VNum f
 makeDefault vt =
   case vt of
-    I32 -> VI32 0
-    I64 -> VI64 0
-    F32 -> VF32 0
-    F64 -> VF64 0
+    I32 -> VI32 (inject 0)
+    I64 -> VI64 (inject 0)
+    F32 -> VF32 (inject 0)
+    F64 -> VF64 (inject 0)
 
-storeByte :: (MonadState WState m, MonadError String m) => Word32 -> MemArg -> Word8 -> m ()
+storeByte :: (MonadState (WState f) m, MonadError String m) => Word32 -> MemArg -> f Word8 -> m ()
 storeByte addr (MemArg off 0) b = wmemory . at (fromIntegral addr + fromIntegral off) ?= b
 storeByte _ _ _ = throwError "Alignement unsupported for storing bytes"
 
-loadByte :: (MonadState WState m, MonadError String m) => Word32 -> MemArg -> m Word8
-loadByte addr (MemArg off 0) = fromMaybe 0 <$> preuse (wmemory . ix (fromIntegral addr + fromIntegral off))
+loadByte :: (Symb f, MonadState (WState f) m, MonadError String m) => Word32 -> MemArg -> m (f Word8)
+loadByte addr (MemArg off 0) = fromMaybe (inject 0) <$> preuse (wmemory . ix (fromIntegral addr + fromIntegral off))
 loadByte _ _ = throwError "Alignement unsupported for loading bytes"
 
-toBool :: VNum -> Bool
+toBool :: Symb f => VNum f -> f Bool
 toBool v =
   case v of
-    VI32 x -> x /= 0
-    VI64 x -> x /= 0
-    VF32 x -> x /= 0
-    VF64 x -> x /= 0
+    VI32 x -> x ./=: inject 0
+    VI64 x -> x ./=: inject 0
+    VF32 x -> x ./=: inject 0
+    VF64 x -> x ./=: inject 0
 
-runBreak :: (MonadState WState m, Num t, Eq t, MonadError String m) => t -> m ()
+runBreak :: (MonadState (WState f) m, Num t, Eq t, MonadError String m) => t -> m ()
 runBreak n = do
   let popCont cur = do
         v <- pop
@@ -147,7 +150,10 @@ runBreak n = do
   rv <- popCont n
   wframe . finstrs .= rv
 
-decodeInstr :: (MonadError String m, MonadState WState m, MonadReader Module m) => Instruction Natural -> m ()
+force :: (RMonad f m, MonadError String m) => f Word32 -> m Word32
+force x = resolve x >>= maybe (throwError "forcing failed") pure
+
+decodeInstr :: (MonadError String m, MonadState (WState f) m, MonadReader Module m, Symb f, RMonad f m) => Instruction Natural -> m ()
 decodeInstr i =
   case i of
     GetLocal n -> do
@@ -168,7 +174,7 @@ decodeInstr i =
       -- store previous frame, and replace with the new frame
       use wframe >>= push . Activation rt
       wframe .= nframe
-    I32Const n -> pushV (VI32 (fromIntegral n))
+    I32Const n -> pushV (VI32 (inject n))
     Block (Inline Nothing) blockbody -> do
       use (wframe . finstrs) >>= push . Cont
       wframe . finstrs .= blockbody
@@ -177,23 +183,24 @@ decodeInstr i =
       wframe . finstrs .= loopbody
     I32Store8 ma -> do
       vtoStore <- pop32
-      addr <- pop32
-      let toStore = fromIntegral vtoStore
+      addr <- pop32 >>= force
+      let toStore = u32tou8 vtoStore
       storeByte addr ma toStore
     I32Load8U ma -> do
-      addr <- pop32
-      loadByte addr ma >>= pushV . VI32 . fromIntegral
+      addr <- pop32 >>= force
+      loadByte addr ma >>= pushV . VI32 . u8tou32
     IRelOp BS32 opr -> do
       b <- pop32
       a <- pop32
       res <- case opr of
-        IEq -> pure $ a == b
-        INe -> pure $ a /= b
-        ILeU -> pure $ a <= b
+        IEq -> pure $ a .==: b
+        INe -> pure $ a ./=: b
+        ILeU -> pure $ a .<=: b
         _ -> throwError "Unsupported comparison"
-      push $ Value $ VI32 $ if res then 1 else 0
+      push $ Value $ VI32 $ oneif res
     If (Inline Nothing) tb fb -> do
-      res <- toBool <$> popV
+      fres <- toBool <$> popV
+      res <- resolveBool fres
       use (wframe . finstrs) >>= push . Cont
       wframe . finstrs
         .= if res
@@ -203,23 +210,24 @@ decodeInstr i =
       b <- pop32
       a <- pop32
       topush <- case bop of
-        IMul -> pure $ a * b
-        IAdd -> pure $ a + b
-        IXor -> pure $ a `xor` b
-        IAnd -> pure $ a .&. b
-        IOr -> pure $ a .|. b
-        ISub -> pure $ a - b
-        IShrU -> pure $ a `shiftR` fromIntegral b
-        IRotl -> pure $ a `rotateL` fromIntegral b
+        IMul -> pure $ a .*: b
+        IAdd -> pure $ a .+: b
+        IXor -> pure $ a .^: b
+        IAnd -> pure $ a .&: b
+        IOr -> pure $ a .|: b
+        ISub -> pure $ a .-: b
+        IShrU -> pure $ a .>>: u32tou8 b
+        IRotl -> pure $ a `rotl` u32tou8 b
         _ -> throwError ("unsupported binop " ++ show bop)
       pushV (VI32 topush)
     BrIf n -> do
-      brnch <- toBool <$> popV
+      fbrnch <- toBool <$> popV
+      brnch <- resolveBool fbrnch
       when brnch (runBreak n)
     Br n -> runBreak n
     _ -> throwError ("unknown instruction " ++ show i)
 
-interpret :: (MonadError String m, MonadState WState m, MonadReader Module m) => m [VNum]
+interpret :: (MonadError String m, MonadState (WState f) m, MonadReader Module m, Symb f, RMonad f m) => m [VNum f]
 interpret = do
   instructions <- use (wframe . finstrs)
   case instructions of
@@ -251,5 +259,5 @@ interpret = do
               interpret
         _ -> throwError "Error in findActivation"
 
-trivialEvaluate :: Module -> WState -> Either String [VNum]
-trivialEvaluate md = evalState (runExceptT (runReaderT interpret md))
+trivialEvaluate :: Module -> WState Identity -> Either String [String]
+trivialEvaluate md = fmap (map showVNumI) . evalState (runExceptT (runReaderT interpret md))
