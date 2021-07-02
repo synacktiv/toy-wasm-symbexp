@@ -21,14 +21,15 @@ class Symb f where
   (.<<:) :: Bits a => f a -> f Word8 -> f a
   rotl :: Bits a => f a -> f Word8 -> f a
   rotr :: Bits a => f a -> f Word8 -> f a
-  (.==:) :: Eq a => f a -> f a -> f Bool
-  (./=:) :: Eq a => f a -> f a -> f Bool
-  (.<=:) :: Ord a => f a -> f a -> f Bool
+  (.==:) :: (Show a, Eq a) => f a -> f a -> f Bool
+  (./=:) :: (Show a, Eq a) => f a -> f a -> f Bool
+  (.<=:) :: (Show a, Ord a) => f a -> f a -> f Bool
   u32tou8 :: f Word32 -> f Word8
   u8tou32 :: f Word8 -> f Word32
   i32tou32 :: f Int32 -> f Word32
   u32toi32 :: f Word32 -> f Int32
   oneif :: (Ord a, Num a) => f Bool -> f a
+  sym8 :: String -> f Word8
 
 instance Symb Identity where
   inject = pure
@@ -50,6 +51,7 @@ instance Symb Identity where
   oneif = fmap (\x -> if x then 1 else 0)
   rotl = liftM2 (\a b -> a `rotateL` fromIntegral b)
   rotr = liftM2 (\a b -> a `rotateR` fromIntegral b)
+  sym8 _ = error "symbolic values not supported with Identity"
 
 class RMonad f m where
   -- | resolve a boolean value
@@ -57,6 +59,12 @@ class RMonad f m where
 
   -- | tentatively resolve an arbitrary value
   resolve :: f a -> m (Maybe a)
+
+class Evaluable f where
+  seval :: f a -> Maybe a
+
+instance Evaluable Identity where
+  seval = Just . runIdentity
 
 instance RMonad Identity Identity where
   resolveBool = pure . runIdentity
