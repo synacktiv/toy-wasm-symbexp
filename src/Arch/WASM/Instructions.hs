@@ -9,7 +9,6 @@
 module Arch.WASM.Instructions where
 
 import Control.Lens
-import Control.Monad (forM_, when)
 import Control.Monad.Except
   ( MonadError (throwError),
     runExceptT,
@@ -17,14 +16,39 @@ import Control.Monad.Except
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Reader.Class (MonadReader (ask))
 import Control.Monad.State.Strict
-  ( MonadState,
-    evalState,
-  )
+import Data.Functor.Classes
 import qualified Data.IntMap.Strict as IntMap
 import Data.Maybe (fromMaybe)
 import Data.Word
+import Domain.Multipath
 import GHC.Natural (Natural)
 import Language.Wasm.Structure
+  ( BitSize (BS32),
+    BlockType (Inline),
+    FuncType (FuncType),
+    Function (Function),
+    IBinOp (IAdd, IAnd, IMul, IOr, IRotl, IShrU, ISub, IXor),
+    IRelOp (IEq, ILeU, INe),
+    Instruction
+      ( Block,
+        Br,
+        BrIf,
+        Call,
+        GetLocal,
+        I32Const,
+        I32Load8U,
+        I32Store8,
+        IBinOp,
+        IRelOp,
+        If,
+        Loop,
+        SetLocal
+      ),
+    MemArg (MemArg),
+    Module (functions, types),
+    ResultType,
+    ValueType (..),
+  )
 import Symb.Expression
 
 data WASM
@@ -54,12 +78,20 @@ data VNum (f :: * -> *)
 makeLenses ''WState
 makeLenses ''Frame
 
-showVNumI :: VNum Identity -> String
-showVNumI v = case v of
-  VI32 x -> show (runIdentity x)
-  VI64 x -> show (runIdentity x)
-  VF32 x -> show (runIdentity x)
-  VF64 x -> show (runIdentity x)
+instance Show1 f => Show (VNum f) where
+  showsPrec n v = case v of
+    VI32 x -> liftShowsPrec showsPrec showList n x
+    VI64 x -> liftShowsPrec showsPrec showList n x
+    VF32 x -> liftShowsPrec showsPrec showList n x
+    VF64 x -> liftShowsPrec showsPrec showList n x
+
+instance Eq1 f => Eq (VNum f) where
+  a == b = case (a, b) of
+    (VI32 x, VI32 y) -> liftEq (==) x y
+    (VF32 x, VF32 y) -> liftEq (==) x y
+    (VI64 x, VI64 y) -> liftEq (==) x y
+    (VF64 x, VF64 y) -> liftEq (==) x y
+    _ -> False
 
 getValueType :: VNum f -> ValueType
 getValueType v =
@@ -259,5 +291,8 @@ interpret = do
               interpret
         _ -> throwError "Error in findActivation"
 
-trivialEvaluate :: Module -> WState Identity -> Either String [String]
-trivialEvaluate md = fmap (map showVNumI) . evalState (runExceptT (runReaderT interpret md))
+trivialEvaluate :: (Symb f, RMonad f Identity) => Module -> WState f -> Either String [VNum f]
+trivialEvaluate md = evalState (runExceptT (runReaderT interpret md))
+
+mpEvaluate :: (Evaluable f, Symb f, RMonad f (MP f Module (WState f))) => Module -> WState f -> [([f Bool], Either String (WState f, [VNum f]))]
+mpEvaluate md ws = evalMP md ws [] interpret

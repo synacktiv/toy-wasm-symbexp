@@ -26,6 +26,9 @@ source-repository head
 library
   exposed-modules:
       Arch.WASM.Instructions
+      Domain.Multipath
+      Domain.Symbolic
+      Domain.Taint
       Symb.Expression
   other-modules:
       Paths_toy_wasm_symbex
