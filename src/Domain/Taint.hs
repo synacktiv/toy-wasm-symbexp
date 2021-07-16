@@ -39,7 +39,6 @@ instance Symb Tainted where
   i32tou32 = fmap fromIntegral
   u32toi32 = fmap fromIntegral
   oneif = fmap (\b -> if b then 1 else 0)
-  sym8 nm = Tainted Nothing (S.singleton nm)
 
 instance RMonad Tainted Identity where
   resolveBool = pure . fromMaybe (error "could not resolve boolean") . _content

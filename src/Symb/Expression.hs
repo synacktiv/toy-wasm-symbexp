@@ -7,29 +7,28 @@ import Control.Lens (Identity (runIdentity))
 import Control.Monad.List
 import Data.Bits
 import Data.Int
-import Data.Word
+import Data.SBV
 
 class Symb f where
-  inject :: a -> f a
-  (.+:) :: (Ord a, Num a) => f a -> f a -> f a
-  (.-:) :: (Ord a, Num a) => f a -> f a -> f a
-  (.*:) :: (Ord a, Num a) => f a -> f a -> f a
-  (.^:) :: (Ord a, Num a, Bits a) => f a -> f a -> f a
-  (.&:) :: (Ord a, Num a, Bits a) => f a -> f a -> f a
-  (.|:) :: (Ord a, Num a, Bits a) => f a -> f a -> f a
-  (.>>:) :: Bits a => f a -> f Word8 -> f a
-  (.<<:) :: Bits a => f a -> f Word8 -> f a
-  rotl :: Bits a => f a -> f Word8 -> f a
-  rotr :: Bits a => f a -> f Word8 -> f a
-  (.==:) :: (Show a, Eq a) => f a -> f a -> f Bool
-  (./=:) :: (Show a, Eq a) => f a -> f a -> f Bool
-  (.<=:) :: (Show a, Ord a) => f a -> f a -> f Bool
+  inject :: SymVal a => a -> f a
+  (.+:) :: (Ord a, Num a, SymVal a) => f a -> f a -> f a
+  (.-:) :: (Ord a, Num a, SymVal a) => f a -> f a -> f a
+  (.*:) :: (Ord a, Num a, SymVal a) => f a -> f a -> f a
+  (.^:) :: (Ord a, Num a, Bits a, SymVal a) => f a -> f a -> f a
+  (.&:) :: (Ord a, Num a, Bits a, SymVal a) => f a -> f a -> f a
+  (.|:) :: (Ord a, Num a, Bits a, SymVal a) => f a -> f a -> f a
+  (.>>:) :: (Bits a, SIntegral a) => f a -> f Word8 -> f a
+  (.<<:) :: (Bits a, SIntegral a) => f a -> f Word8 -> f a
+  rotl :: (Bits a, SIntegral a) => f a -> f Word8 -> f a
+  rotr :: (Bits a, SIntegral a) => f a -> f Word8 -> f a
+  (.==:) :: (Show a, Eq a, SymVal a) => f a -> f a -> f Bool
+  (./=:) :: (Show a, Eq a, SymVal a) => f a -> f a -> f Bool
+  (.<=:) :: (Show a, Ord a, SymVal a) => f a -> f a -> f Bool
   u32tou8 :: f Word32 -> f Word8
   u8tou32 :: f Word8 -> f Word32
   i32tou32 :: f Int32 -> f Word32
   u32toi32 :: f Word32 -> f Int32
-  oneif :: (Ord a, Num a) => f Bool -> f a
-  sym8 :: String -> f Word8
+  oneif :: (Ord a, Num a, SymVal a) => f Bool -> f a
 
 instance Symb Identity where
   inject = pure
@@ -51,20 +50,43 @@ instance Symb Identity where
   oneif = fmap (\x -> if x then 1 else 0)
   rotl = liftM2 (\a b -> a `rotateL` fromIntegral b)
   rotr = liftM2 (\a b -> a `rotateR` fromIntegral b)
-  sym8 _ = error "symbolic values not supported with Identity"
+
+instance Symb SBV where
+  inject = literal
+  (.+:) = (+)
+  (.-:) = (-)
+  (.*:) = (*)
+  (.^:) = xor
+  (.&:) = (.&.)
+  (.|:) = (.|.)
+  (.==:) = (.==)
+  (./=:) = (./=)
+  (.<=:) = (.<=)
+  u32tou8 = sFromIntegral
+  u8tou32 = sFromIntegral
+  i32tou32 = sFromIntegral
+  u32toi32 = sFromIntegral
+  oneif = oneIf
+  (.>>:) = sShiftRight
+  (.<<:) = sShiftLeft
+  rotl = sRotateLeft
+  rotr = sRotateRight
 
 class RMonad f m where
   -- | resolve a boolean value
   resolveBool :: f Bool -> m Bool
 
   -- | tentatively resolve an arbitrary value
-  resolve :: f a -> m (Maybe a)
+  resolve :: SymVal a => f a -> m (Maybe a)
 
 class Evaluable f where
-  seval :: f a -> Maybe a
+  seval :: SymVal a => f a -> Maybe a
 
 instance Evaluable Identity where
   seval = Just . runIdentity
+
+instance Evaluable SBV where
+  seval = unliteral
 
 instance RMonad Identity Identity where
   resolveBool = pure . runIdentity

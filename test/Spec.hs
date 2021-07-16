@@ -134,13 +134,13 @@ taintTests = do
       [GetLocal 0, GetLocal 1, IBinOp BS32 IAdd]
       [Tainted (Just 4) (S.singleton "left"), Tainted (Just 8) (S.singleton "right")]
       [Tainted (Just 12) (S.fromList ["left", "right"])]
-
-main :: IO ()
-main = hspec $ do
-  describe "concrete intepreter test" interpreterTests
-  describe "tainting intepreter test" taintTests
   describe "strcmp" $ do
     -- note that the taint does not work here :)
     it "aba == aba" $ runChallengePassword "aba" "aba" `shouldBe` Right [VI32 (Tainted (Just 1) mempty)]
     it "aba != abk" $ runChallengePassword "aba" "abk" `shouldBe` Right [VI32 (Tainted (Just 0) mempty)]
     it "aba != ab" $ runChallengePassword "aba" "ab" `shouldBe` Right [VI32 (Tainted (Just 0) mempty)]
+
+main :: IO ()
+main = hspec $ do
+  describe "concrete intepreter test" interpreterTests
+  describe "tainting intepreter test" taintTests

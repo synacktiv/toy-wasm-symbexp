@@ -9,31 +9,32 @@
 module Domain.Symbolic where
 
 import Data.Bits
-import Data.Functor.Classes (Show1 (liftShowsPrec))
+import Data.Functor.Classes
 import Data.Int (Int32)
 import Data.Word (Word32, Word8)
-import Symb.Expression (Evaluable (..), Symb (..))
+import Symb.Expression
+import Data.SBV (SymVal)
 
 data Dir = L | R
   deriving (Eq)
 
 data Symbolic a where
-  Add :: (Eq a, Num a) => Symbolic a -> Symbolic a -> Symbolic a
-  Sub :: (Eq a, Num a) => Symbolic a -> Symbolic a -> Symbolic a
-  Mul :: (Eq a, Num a) => Symbolic a -> Symbolic a -> Symbolic a
-  Xor :: Bits a => Symbolic a -> Symbolic a -> Symbolic a
-  And :: Bits a => Symbolic a -> Symbolic a -> Symbolic a
-  Or :: Bits a => Symbolic a -> Symbolic a -> Symbolic a
-  Shift :: Bits a => Dir -> Symbolic a -> Symbolic Word8 -> Symbolic a
-  Rot :: Bits a => Dir -> Symbolic a -> Symbolic Word8 -> Symbolic a
-  Eq :: (Eq a, Show a) => Symbolic a -> Symbolic a -> Symbolic Bool
-  Ne :: (Eq a, Show a) => Symbolic a -> Symbolic a -> Symbolic Bool
-  Lte :: (Ord a, Show a) => Symbolic a -> Symbolic a -> Symbolic Bool
+  Add :: (Eq a, Num a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic a
+  Sub :: (Eq a, Num a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic a
+  Mul :: (Eq a, Num a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic a
+  Xor :: (Bits a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic a
+  And :: (Bits a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic a
+  Or :: (Bits a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic a
+  Shift :: (Bits a, SymVal a) => Dir -> Symbolic a -> Symbolic Word8 -> Symbolic a
+  Rot :: (Bits a, SymVal a) => Dir -> Symbolic a -> Symbolic Word8 -> Symbolic a
+  Eq :: (Eq a, Show a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic Bool
+  Ne :: (Eq a, Show a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic Bool
+  Lte :: (Ord a, Show a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic Bool
   U32tou8 :: Symbolic Word32 -> Symbolic Word8
   U8tou32 :: Symbolic Word8 -> Symbolic Word32
   I32tou32 :: Symbolic Int32 -> Symbolic Word32
   U32toi32 :: Symbolic Word32 -> Symbolic Int32
-  Oneif :: Num a => Symbolic Bool -> Symbolic a
+  Oneif :: (Num a, SymVal a) => Symbolic Bool -> Symbolic a
   Raw :: a -> Symbolic a
   Sym :: String -> Symbolic Word8
 
@@ -84,9 +85,8 @@ instance Symb Symbolic where
   i32tou32 = I32tou32
   u32toi32 = U32toi32
   oneif = Oneif
-  sym8 = Sym
 
-instance (Num a, Ord a, Show a) => Num (Symbolic a) where
+instance (Num a, Ord a, Show a, SymVal a) => Num (Symbolic a) where
   (+) = Add
   (*) = Mul
   negate = Mul (-1)

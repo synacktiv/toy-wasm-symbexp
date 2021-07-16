@@ -11,6 +11,7 @@ import Control.Monad.Error.Class
 import Control.Monad.Reader.Class
 import Control.Monad.State.Class
 import Symb.Expression
+import Data.SBV
 
 data MP (f :: * -> *) r s a where
   -- Functor interface
@@ -29,7 +30,7 @@ data MP (f :: * -> *) r s a where
   Get :: MP f r s s
   Put :: s -> MP f r s ()
   -- Multipath interface
-  Multi :: (Enum a, Bounded a, Eq a, Show a) => f a -> MP f r s a
+  Multi :: (Enum a, Bounded a, Eq a, Show a, SymVal a) => f a -> MP f r s a
 
 instance Functor (MP f r s) where
   fmap = Fmap
