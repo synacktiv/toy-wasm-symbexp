@@ -39,6 +39,7 @@ library
       base >=4.7 && <5
     , bytestring
     , containers
+    , hedgehog
     , lens
     , mtl
     , sbv
@@ -56,8 +57,10 @@ executable run-challenge
       base >=4.7 && <5
     , bytestring
     , containers
+    , hedgehog
     , lens
     , mtl
+    , optparse-applicative
     , sbv
     , toy-wasm-symbex
     , wasm
@@ -75,7 +78,9 @@ test-suite toy-wasm-symbex-test
       base >=4.7 && <5
     , bytestring
     , containers
+    , hedgehog
     , hspec
+    , hspec-hedgehog
     , lens
     , mtl
     , sbv
