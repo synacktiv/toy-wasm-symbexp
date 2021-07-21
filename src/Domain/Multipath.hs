@@ -7,29 +7,27 @@
 
 module Domain.Multipath where
 
-import Control.Monad.Error.Class
-import Control.Monad.Reader.Class
-import Control.Monad.State.Class
+import Control.Monad.Error.Class (MonadError (..))
+import Control.Monad.Reader.Class (MonadReader (ask, local))
+import Control.Monad.State.Class (MonadState (get, put))
+import Data.SBV (SymVal)
 import Symb.Expression
-import Data.SBV
 
 data MP (f :: * -> *) r s a where
-  -- Functor interface
+  -- functor / applicative / monad constraints
   Fmap :: (a -> b) -> MP f r s a -> MP f r s b
-  -- Applicative interface
   Pure :: a -> MP f r s a
-  -- Monad interface
   Bind :: MP f r s a -> (a -> MP f r s b) -> MP f r s b
-  -- MonadError String
+  -- monaderror constraints
   Throw :: String -> MP f r s a
   Catch :: MP f r s a -> (String -> MP f r s a) -> MP f r s a
-  -- Reader interface
+  -- reader constraints
   Ask :: MP f r s r
   Local :: (r -> r) -> MP f r s a -> MP f r s a
-  -- State interface
+  -- state constraints
   Get :: MP f r s s
   Put :: s -> MP f r s ()
-  -- Multipath interface
+  -- multi path
   Multi :: (Enum a, Bounded a, Eq a, Show a, SymVal a) => f a -> MP f r s a
 
 instance Functor (MP f r s) where
@@ -89,4 +87,5 @@ evalMP r s constraints o =
     Local f sub -> evalMP (f r) s constraints sub
     Get -> [(constraints, Right (s, s))]
     Put s' -> [(constraints, Right (s', ()))]
+    -- for each possible value of the variable, run a parallel path with a constraints that the variable is equal to this value
     Multi var -> [((var .==: inject a) : constraints, Right (s, a)) | a <- [minBound .. maxBound]]

@@ -5,19 +5,26 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TupleSections #-}
 
 module Domain.Symbolic where
 
 import Data.Bits
-import Data.Functor.Classes
+import Data.Functor.Classes (Show1 (liftShowsPrec))
 import Data.Int (Int32)
-import Data.Word (Word32, Word8)
-import Symb.Expression
+import qualified Data.Map.Strict as M
 import Data.SBV (SymVal)
+import Data.Word (Word32, Word8)
+import Hedgehog (MonadGen)
+import Hedgehog.Gen (bool_, choice, element, enumBounded, recursive, subterm2, word32, word8)
+import Hedgehog.Range (constantBounded)
+import Symb.Expression (Evaluable (..), Symb (..))
 
 data Dir = L | R
-  deriving (Eq)
+  deriving (Eq, Enum, Bounded)
 
+-- | this is a direct encoding of the Symb typeclass, it does not contain
+-- anything interesting, really
 data Symbolic a where
   Add :: (Eq a, Num a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic a
   Sub :: (Eq a, Num a, SymVal a) => Symbolic a -> Symbolic a -> Symbolic a
@@ -38,9 +45,28 @@ data Symbolic a where
   Raw :: a -> Symbolic a
   Sym :: String -> Symbolic Word8
 
+-- | debug show, useful when something goes wrong and you want to copy paste
+-- an expression in the REPL
+--
+-- completing is left as an exercise to the reader :)
+dshow :: Show a => Symbolic a -> String
+dshow s =
+  case s of
+    Or a b -> "Or (" ++ dshow a ++ ") (" ++ dshow b ++ ")"
+    Eq a b -> "Eq (" ++ dshow a ++ ") (" ++ dshow b ++ ")"
+    Ne a b -> "Ne (" ++ dshow a ++ ") (" ++ dshow b ++ ")"
+    Sub a b -> "Sub (" ++ dshow a ++ ") (" ++ dshow b ++ ")"
+    Oneif x -> "Oneif (" ++ dshow x ++ ")"
+    Raw x -> "Raw " ++ show x
+    U8tou32 x -> "U8tou32 (" ++ dshow x ++ ")"
+    Sym v -> "Sym " ++ show v
+    Shift L a b -> "Shift L (" ++ dshow a ++ ") (" ++ dshow b ++ ")"
+    _ -> show s
+
 instance Show a => Show (Symbolic a) where
   showsPrec n a = liftShowsPrec showsPrec showList n a
 
+-- | A pretty printer that understands operator precedence
 instance Show1 Symbolic where
   liftShowsPrec sp sl p alg =
     case alg of
@@ -65,6 +91,7 @@ instance Show1 Symbolic where
       Raw v -> sp p v
       Sym v -> (v ++)
 
+-- | as Symbolic is a direct encoding of Symb, writing the instance is trivial ...
 instance Symb Symbolic where
   inject = Raw
   (.+:) = Add
@@ -86,6 +113,7 @@ instance Symb Symbolic where
   u32toi32 = U32toi32
   oneif = Oneif
 
+-- | A Num instance makes things useful in the repl :)
 instance (Num a, Ord a, Show a, SymVal a) => Num (Symbolic a) where
   (+) = Add
   (*) = Mul
@@ -95,98 +123,164 @@ instance (Num a, Ord a, Show a, SymVal a) => Num (Symbolic a) where
   abs x = signum x * x
 
 instance Evaluable Symbolic where
-  seval a = case a of
-    Raw x -> Just x
-    Add x y -> (+) <$> seval x <*> seval y
-    Sub x y -> (-) <$> seval x <*> seval y
-    Mul x y -> (*) <$> seval x <*> seval y
-    Xor x y -> xor <$> seval x <*> seval y
-    And x y -> (.&.) <$> seval x <*> seval y
-    Or x y -> (.|.) <$> seval x <*> seval y
-    Shift R x y -> shiftR <$> seval x <*> (fromIntegral <$> seval y)
-    Shift L x y -> shiftL <$> seval x <*> (fromIntegral <$> seval y)
-    Rot R x y -> rotateR <$> seval x <*> (fromIntegral <$> seval y)
-    Rot L x y -> rotateL <$> seval x <*> (fromIntegral <$> seval y)
-    Eq x y -> (==) <$> seval x <*> seval y
-    Ne x y -> (/=) <$> seval x <*> seval y
-    Lte x y -> (<=) <$> seval x <*> seval y
-    U32tou8 x -> fmap fromIntegral (seval x)
-    U8tou32 x -> fmap fromIntegral (seval x)
-    I32tou32 x -> fmap fromIntegral (seval x)
-    U32toi32 x -> fmap fromIntegral (seval x)
-    Oneif y -> fmap (\x -> if x then 1 else 0) (seval y)
-    Sym _ -> Nothing
+  seval = veval mempty
 
-simplify :: Symbolic a -> Symbolic a
-simplify e =
-  case e of
-    Raw x -> Raw x
-    Add x y ->
-      let x' = simplify x
-          y' = simplify y
-          r = Add x' y'
-       in case (x', y') of
-            (Raw 0, _) -> y'
-            (_, Raw 0) -> x'
-            _ -> maybe r Raw (seval r)
-    Sub x y ->
-      let r = Sub (simplify x) (simplify y)
-       in maybe r Raw (seval r)
-    Mul x y ->
-      let r = Mul (simplify x) (simplify y)
-       in maybe r Raw (seval r)
-    Xor x y ->
-      let r = Xor (simplify x) (simplify y)
-       in maybe r Raw (seval r)
-    And x y ->
-      let x' = simplify x
-          y' = simplify y
-          r = And x' y'
-       in case (x', y') of
-            (Raw v, _) | v == zeroBits -> x'
-            _ -> maybe r Raw (seval r)
-    Or x y ->
-      let r = Or (simplify x) (simplify y)
-       in maybe r Raw (seval r)
-    Shift d x y ->
-      let r = Shift d (simplify x) (simplify y)
-       in maybe r Raw (seval r)
-    Rot d x y ->
-      let r = Rot d (simplify x) (simplify y)
-       in maybe r Raw (seval r)
-    Eq x y ->
-      let x' = simplify x
-          y' = simplify y
-          r = Eq x' y'
-       in case (x', y') of
-            (Ne _ _, Raw True) -> x'
-            (Ne c1 c2, Raw False) -> simplify (Eq c1 c2)
-            (Eq _ _, Raw True) -> x'
-            (Eq c1 c2, Raw False) -> simplify (Ne c1 c2)
-            _ -> maybe r Raw (seval r)
-    Ne x y ->
-      let x' = simplify x
-          y' = simplify y
-          r = Ne x' y'
-       in case (x', y') of
-            (Oneif cnd, Raw 0) -> simplify (Eq cnd (Raw False))
-            _ -> maybe r Raw (seval r)
-    Lte x y ->
-      let r = Lte (simplify x) (simplify y)
-       in maybe r Raw (seval r)
-    U32tou8 x ->
-      let r = U32tou8 (simplify x)
-       in maybe r Raw (seval r)
-    U8tou32 x ->
-      let r = U8tou32 (simplify x)
-       in maybe r Raw (seval r)
-    I32tou32 x ->
-      let r = I32tou32 (simplify x)
-       in maybe r Raw (seval r)
-    U32toi32 x ->
-      let r = U32toi32 (simplify x)
-       in maybe r Raw (seval r)
-    Oneif x ->
-      let r = Oneif (simplify x)
-       in maybe r Raw (seval r)
-    Sym _ -> e
+-- | evaluate with a map containing the variable values
+veval :: M.Map String Word8 -> Symbolic a -> Maybe a
+veval vars = go
+  where
+    go :: Symbolic a -> Maybe a
+    go a = case a of
+      Raw x -> Just x
+      Add x y -> (+) <$> go x <*> go y
+      Sub x y -> (-) <$> go x <*> go y
+      Mul x y -> (*) <$> go x <*> go y
+      Xor x y -> xor <$> go x <*> go y
+      And x y -> (.&.) <$> go x <*> go y
+      Or x y -> (.|.) <$> go x <*> go y
+      Shift R x y -> shiftR <$> go x <*> (fromIntegral <$> go y)
+      Shift L x y -> shiftL <$> go x <*> (fromIntegral <$> go y)
+      Rot R x y -> rotateR <$> go x <*> (fromIntegral <$> go y)
+      Rot L x y -> rotateL <$> go x <*> (fromIntegral <$> go y)
+      Eq x y -> (==) <$> go x <*> go y
+      Ne x y -> (/=) <$> go x <*> go y
+      Lte x y -> (<=) <$> go x <*> go y
+      U32tou8 x -> fmap fromIntegral (go x)
+      U8tou32 x -> fmap fromIntegral (go x)
+      I32tou32 x -> fmap fromIntegral (go x)
+      U32toi32 x -> fmap fromIntegral (go x)
+      Oneif y -> fmap (\x -> if x then 1 else 0) (go y)
+      Sym varname -> M.lookup varname vars
+
+-- | simplify an expression, not knowing any variable values
+simplify :: Show a => Symbolic a -> Symbolic a
+simplify = vsimplify mempty
+
+-- | simplify an expression, knowing some variable values
+vsimplify :: Show a => M.Map String Word8 -> Symbolic a -> Symbolic a
+vsimplify vars = go
+  where
+    go :: Show a => Symbolic a -> Symbolic a
+    go e = case e of
+      Raw x -> Raw x
+      Add x y ->
+        let x' = go x
+            y' = go y
+            r = Add x' y'
+         in case (x', y') of
+              (Raw 0, _) -> y'
+              (_, Raw 0) -> x'
+              _ -> maybe r Raw (veval vars r)
+      Sub x y ->
+        let r = Sub (go x) (go y)
+         in maybe r Raw (veval vars r)
+      Mul x y ->
+        let r = Mul (go x) (go y)
+         in maybe r Raw (veval vars r)
+      Xor x y ->
+        let r = Xor (go x) (go y)
+         in maybe r Raw (veval vars r)
+      And x y ->
+        let x' = go x
+            y' = go y
+            r = And x' y'
+         in case (x', y') of
+              (Raw v, _) | v == zeroBits -> x'
+              _ -> maybe r Raw (veval vars r)
+      Or x y ->
+        let r = Or (go x) (go y)
+         in maybe r Raw (veval vars r)
+      Shift d x y ->
+        let r = Shift d (go x) (go y)
+         in maybe r Raw (veval vars r)
+      Rot d x y ->
+        let r = Rot d (go x) (go y)
+         in maybe r Raw (veval vars r)
+      Eq x y ->
+        let x' = go x
+            y' = go y
+            r = Eq x' y'
+         in case (x', y') of
+              (Mul v (Raw 2), Raw 2) -> go (Eq v (Raw 1))
+              (U8tou32 v, Raw k) -> go (Eq v (Raw (fromIntegral k)))
+              (Ne _ _, Raw True) -> x'
+              (Ne c1 c2, Raw False) -> go (Eq c1 c2)
+              (Eq _ _, Raw True) -> x'
+              (Eq c1 c2, Raw False) -> go (Ne c1 c2)
+              (Oneif (Eq a b), Raw 0) -> go (Ne a b)
+              (Oneif (Eq a b), Raw 1) -> go (Eq a b)
+              (Oneif (Ne a b), Raw 0) -> go (Eq a b)
+              (Oneif (Ne a b), Raw 1) -> go (Ne a b)
+              (Sub a b, c) -> go (Eq a (Add b c))
+              (Or (Oneif c1) (Oneif c2), Raw 1) -> Or c1 c2
+              (Oneif _, Raw z) | z /= 0 && z /= 1 -> Raw False
+              (Or a@(Eq _ _) b, Raw False) -> go (And (Eq a (Raw False)) (Eq b (Raw False)))
+              _ -> maybe r Raw (veval vars r)
+      Ne x y ->
+        let x' = go x
+            y' = go y
+            r = Ne x' y'
+         in case (x', y') of
+              (Oneif cnd, Raw 0) -> go (Eq cnd (Raw True))
+              (Or (Oneif c1) (Oneif c2), Raw 0) -> go (Or c1 c2)
+              _ -> maybe r Raw (veval vars r)
+      Lte x y ->
+        let r = Lte (go x) (go y)
+         in maybe r Raw (veval vars r)
+      U32tou8 x ->
+        let r = U32tou8 (go x)
+         in maybe r Raw (veval vars r)
+      U8tou32 x ->
+        let r = U8tou32 (go x)
+         in maybe r Raw (veval vars r)
+      I32tou32 x ->
+        let r = I32tou32 (go x)
+         in maybe r Raw (veval vars r)
+      U32toi32 x ->
+        let r = U32toi32 (go x)
+         in maybe r Raw (veval vars r)
+      Oneif x ->
+        let r = Oneif (go x)
+         in maybe r Raw (veval vars r)
+      Sym n -> maybe e Raw (M.lookup n vars)
+
+-- for testing purpose
+
+genvarnames :: [String]
+genvarnames = map pure ['a' .. 'f']
+
+genvars :: MonadGen m => m (M.Map String Word8)
+genvars = M.fromList <$> traverse (\vn -> (vn,) <$> word8 constantBounded) genvarnames
+
+genword8 :: MonadGen m => m (Symbolic Word8)
+genword8 = choice [Raw <$> word8 constantBounded, Sym <$> element genvarnames]
+
+genword32 :: MonadGen m => m (Symbolic Word32)
+genword32 =
+  recursive
+    choice
+    [Raw <$> word32 constantBounded]
+    [ subterm2 genword32 genword32 Add,
+      subterm2 genword32 genword32 Sub,
+      subterm2 genword32 genword32 Mul,
+      subterm2 genword32 genword32 Xor,
+      subterm2 genword32 genword32 And,
+      subterm2 genword32 genword32 Or,
+      Shift <$> enumBounded <*> genword32 <*> genword8,
+      Rot <$> enumBounded <*> genword32 <*> genword8,
+      Oneif <$> genbool
+    ]
+
+genbool :: MonadGen m => m (Symbolic Bool)
+genbool =
+  recursive
+    choice
+    [Raw <$> bool_]
+    [ Eq <$> genword32 <*> genword32,
+      Ne <$> genword32 <*> genword32,
+      Lte <$> genword32 <*> genword32,
+      subterm2 genbool genbool Eq,
+      subterm2 genbool genbool Ne,
+      subterm2 genbool genbool Or,
+      subterm2 genbool genbool And
+    ]

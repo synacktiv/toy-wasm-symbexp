@@ -27,6 +27,7 @@ dependencies:
 - lens
 - mtl
 - sbv
+- hedgehog
 
 library:
   source-dirs: src
@@ -43,6 +44,7 @@ executables:
     - -Wall
     dependencies:
     - toy-wasm-symbex
+    - optparse-applicative
 
 tests:
   toy-wasm-symbex-test:
@@ -55,4 +57,6 @@ tests:
     dependencies:
     - toy-wasm-symbex
     - hspec
+    - hspec-hedgehog
+
 
