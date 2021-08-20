@@ -17,3 +17,6 @@ $ make part1-custom
 $ make part1-smt
 $ make part2-smt
 ```
+# Note
+
+The challenge being solved is [https://forumcrack.github.io/](The ForumCrack KeygenMe).
