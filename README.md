@@ -19,4 +19,4 @@ $ make part2-smt
 ```
 # Note
 
-The challenge being solved is [https://forumcrack.github.io/](The ForumCrack KeygenMe).
+The challenge being solved is [the ForumCrack KeygenMe](https://forumcrack.github.io/).
