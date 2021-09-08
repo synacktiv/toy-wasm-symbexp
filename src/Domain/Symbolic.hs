@@ -70,19 +70,19 @@ instance Show a => Show (Symbolic a) where
 instance Show1 Symbolic where
   liftShowsPrec sp sl p alg =
     case alg of
-      Or x y -> showParen (p > 10) $ liftShowsPrec sp sl 10 x . (" | " ++) . liftShowsPrec sp sl 11 y
-      Xor x y -> showParen (p > 9) $ liftShowsPrec sp sl 9 x . (" ^ " ++) . liftShowsPrec sp sl 10 y
-      And x y -> showParen (p > 8) $ liftShowsPrec sp sl 8 x . (" & " ++) . liftShowsPrec sp sl 9 y
-      Eq x y -> showParen (p > 7) $ liftShowsPrec showsPrec showList 7 x . (" == " ++) . liftShowsPrec showsPrec showList 8 y
-      Ne x y -> showParen (p > 7) $ liftShowsPrec showsPrec showList 7 x . (" != " ++) . liftShowsPrec showsPrec showList 8 y
+      Or x y -> showParen (p > 2) $ liftShowsPrec sp sl 2 x . (" | " ++) . liftShowsPrec sp sl 3 y
+      Xor x y -> showParen (p > 3) $ liftShowsPrec sp sl 3 x . (" ^ " ++) . liftShowsPrec sp sl 4 y
+      And x y -> showParen (p > 4) $ liftShowsPrec sp sl 4 x . (" & " ++) . liftShowsPrec sp sl 5 y
+      Eq x y -> showParen (p > 5) $ liftShowsPrec showsPrec showList 5 x . (" == " ++) . liftShowsPrec showsPrec showList 6 y
+      Ne x y -> showParen (p > 5) $ liftShowsPrec showsPrec showList 5 x . (" != " ++) . liftShowsPrec showsPrec showList 6 y
       Lte x y -> showParen (p > 6) $ liftShowsPrec showsPrec showList 6 x . (" <= " ++) . liftShowsPrec showsPrec showList 7 y
-      Shift L x y -> showParen (p > 5) $ liftShowsPrec sp sl 5 x . (" << " ++) . liftShowsPrec showsPrec showList 6 y
-      Shift R x y -> showParen (p > 5) $ liftShowsPrec sp sl 5 x . (" >> " ++) . liftShowsPrec showsPrec showList 6 y
-      Rot L x y -> showParen (p > 5) $ liftShowsPrec sp sl 5 x . (" rotl " ++) . liftShowsPrec showsPrec showList 6 y
-      Rot R x y -> showParen (p > 5) $ liftShowsPrec sp sl 5 x . (" rotr " ++) . liftShowsPrec showsPrec showList 6 y
-      Add x y -> showParen (p > 4) $ liftShowsPrec sp sl 4 x . (" + " ++) . liftShowsPrec sp sl 5 y
-      Sub x y -> showParen (p > 4) $ liftShowsPrec sp sl 4 x . (" - " ++) . liftShowsPrec sp sl 5 y
-      Mul x y -> showParen (p > 3) $ liftShowsPrec sp sl 3 x . (" * " ++) . liftShowsPrec sp sl 4 y
+      Shift L x y -> showParen (p > 7) $ liftShowsPrec sp sl 7 x . (" << " ++) . liftShowsPrec showsPrec showList 8 y
+      Shift R x y -> showParen (p > 7) $ liftShowsPrec sp sl 7 x . (" >> " ++) . liftShowsPrec showsPrec showList 8 y
+      Rot L x y -> showParen (p > 8) $ liftShowsPrec sp sl 8 x . (" rotl " ++) . liftShowsPrec showsPrec showList 9 y
+      Rot R x y -> showParen (p > 8) $ liftShowsPrec sp sl 8 x . (" rotr " ++) . liftShowsPrec showsPrec showList 9 y
+      Add x y -> showParen (p > 9) $ liftShowsPrec sp sl 9 x . (" + " ++) . liftShowsPrec sp sl 10 y
+      Sub x y -> showParen (p > 9) $ liftShowsPrec sp sl 9 x . (" - " ++) . liftShowsPrec sp sl 10 y
+      Mul x y -> showParen (p > 10) $ liftShowsPrec sp sl 10 x . (" * " ++) . liftShowsPrec sp sl 11 y
       U32tou8 v -> ("u8(" ++) . liftShowsPrec showsPrec showList 0 v . (")" ++)
       U8tou32 v -> ("u32(" ++) . liftShowsPrec showsPrec showList 0 v . (")" ++)
       I32tou32 v -> ("unsigned(" ++) . liftShowsPrec showsPrec showList 0 v . (")" ++)
@@ -90,6 +90,7 @@ instance Show1 Symbolic where
       Oneif v -> ("oneif(" ++) . liftShowsPrec showsPrec showList 0 v . (")" ++)
       Raw v -> sp p v
       Sym v -> (v ++)
+
 
 -- | as Symbolic is a direct encoding of Symb, writing the instance is trivial ...
 instance Symb Symbolic where
@@ -117,6 +118,7 @@ instance Symb Symbolic where
 instance (Num a, Ord a, Show a, SymVal a) => Num (Symbolic a) where
   (+) = Add
   (*) = Mul
+  (-) = Sub
   negate = Mul (-1)
   fromInteger = Raw . fromInteger
   signum x = Oneif (Lte x 0) * 2 - 1
